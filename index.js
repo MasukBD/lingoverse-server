@@ -9,8 +9,8 @@ const port = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-const verifyJWTToken = (req, res, next) => {
-    const authorization = req?.headers?.Authorization;
+const verifyJWToken = (req, res, next) => {
+    const authorization = req.headers.authorization;
     if (!authorization) {
         return res.status(401).send({ error: true, message: "unauthorized access" });
     };
@@ -26,7 +26,7 @@ const verifyJWTToken = (req, res, next) => {
 
 
 
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.y1dis5d.mongodb.net/?retryWrites=true&w=majority`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -49,6 +49,7 @@ async function run() {
         const mentorsCollection = client.db('LingoVerseDB').collection('mentors');
         const registeredStudents = client.db('LingoVerseDB').collection('registeredStudents');
         const cartCollection = client.db('LingoVerseDB').collection('cartItem');
+        const enrolledCollection = client.db('LingoVerseDB').collection('enrolledStudents');
 
         // Sending Token to Client 
         app.post('/jwt', (req, res) => {
@@ -92,9 +93,48 @@ async function run() {
         });
 
         // Student Registration API Here 
-        app.post('/register', verifyJWTToken, async (req, res) => {
+        app.post('/register', verifyJWToken, async (req, res) => {
             const studentData = req.body;
             const result = await registeredStudents.insertOne(studentData);
+            res.send(result);
+        });
+
+        app.get('/register', verifyJWToken, async (req, res) => {
+            let query = {};
+            const studentEmail = req.query?.email;
+            if (req.decoded?.email !== studentEmail) {
+                return res.status(401).send({ message: 'Unauthorized Access!' });
+            }
+            query = { email: studentEmail };
+            const result = await registeredStudents.findOne(query);
+            res.send(result);
+        })
+
+        // CourseCart API here 
+        app.get('/courseCart', verifyJWToken, async (req, res) => {
+            let query = {};
+            const email = req.query?.email;
+            if (req.decoded?.email !== email) {
+                return res.status(403).send({ error: true, message: 'forbidden access' });
+            }
+            if (email) {
+                query = { studentEmail: email };
+            }
+            const cursor = cartCollection.find(query);
+            const result = await cursor.toArray();
+            res.send(result);
+        });
+
+        app.post('/courseCart', verifyJWToken, async (req, res) => {
+            const cartItem = req.body;
+            const result = await cartCollection.insertOne(cartItem);
+            res.send(result);
+        });
+
+        app.delete('/courseCart/:id', verifyJWToken, async (req, res) => {
+            const id = req.params?.id;
+            let query = { _id: new ObjectId(id) };
+            const result = await cartCollection.deleteOne(query);
             res.send(result);
         })
 
