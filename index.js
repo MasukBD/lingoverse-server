@@ -3,6 +3,7 @@ const app = express();
 const cors = require('cors');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 5000;
 
 // middleware 
@@ -136,6 +137,40 @@ async function run() {
             let query = { _id: new ObjectId(id) };
             const result = await cartCollection.deleteOne(query);
             res.send(result);
+        });
+
+        // Stripe Payment Intent 
+        app.post('/create-stripe-payment-intent', verifyJWToken, async (req, res) => {
+            const { price } = req.body;
+            const grandPrice = price * 100;
+            const paymentIntent = await stripe.paymentIntents.create({
+                amount: grandPrice,
+                currency: "usd",
+                payment_method_types: ["card"],
+            })
+            res.send({
+                clientSecret: paymentIntent.client_secret,
+            })
+        });
+
+        // Enroll Student Data API 
+        app.get('/enrolledStudents', verifyJWToken, async (req, res) => {
+            const email = req.query?.email;
+            if (req.decoded?.email !== email) {
+                return res.status(403).send({ error: true, message: 'forbidden access' });
+            }
+            let query = { email: email };
+            const result = await enrolledCollection.find(query).toArray();
+            res.send(result);
+        })
+
+        app.post('/enrolledStudents', verifyJWToken, async (req, res) => {
+            const enrolledData = req.body;
+            const { cartId, ...enrollDataToDb } = enrolledData;
+            const insertEnrollment = await enrolledCollection.insertOne(enrollDataToDb);
+            let query = { _id: new ObjectId(enrolledData.cartId) };
+            const deleteFromCart = await cartCollection.deleteOne(query);
+            res.send({ insertEnrollment, deleteFromCart });
         })
 
 
