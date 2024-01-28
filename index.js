@@ -109,6 +109,24 @@ async function run() {
             query = { email: studentEmail };
             const result = await registeredStudents.findOne(query);
             res.send(result);
+        });
+
+        app.put('/register/:id', verifyJWToken, async (req, res) => {
+            const id = req.params?.id;
+            const filter = { _id: new ObjectId(id) };
+            const updatedData = req.body;
+            const options = { upsert: true };
+            const updateToDB = {
+                $set: {
+                    fullName: updatedData.fullName,
+                    nationallity: updatedData.nationality,
+                    passportNo: updatedData.passport,
+                    phoneNo: updatedData.phone,
+                    address: updatedData.address
+                }
+            }
+            const result = await registeredStudents.updateOne(filter, updateToDB, options);
+            res.send(result);
         })
 
         // CourseCart API here 
@@ -166,11 +184,25 @@ async function run() {
 
         app.post('/enrolledStudents', verifyJWToken, async (req, res) => {
             const enrolledData = req.body;
+            // When a student enrolled successfully then here in the code belew decrease available seat 
+            const filter = { _id: new ObjectId(enrolledData.courseId) };
+            const course = await coursesCollection.findOne(filter);
+            if (!course) {
+                return res.status(400).send({ error: 'No Course Available!' });
+            }
+            else if (course.available_seats <= 0) {
+                return res.status(400).send({ message: 'No seat Availble!' });
+            }
+            const update = { $inc: { available_seats: -1 } };
+            const options = { returnOriginal: false };
+            const decrementedSeatInCourse = await coursesCollection.findOneAndUpdate(filter, update, options);
             const { cartId, ...enrollDataToDb } = enrolledData;
+            // Inserting successfull Enrollment Student Data to DB 
             const insertEnrollment = await enrolledCollection.insertOne(enrollDataToDb);
+            // After Enrollment Delete Cart Data From CartItem 
             let query = { _id: new ObjectId(enrolledData.cartId) };
             const deleteFromCart = await cartCollection.deleteOne(query);
-            res.send({ insertEnrollment, deleteFromCart });
+            res.send({ insertEnrollment, deleteFromCart, decrementedSeatInCourse });
         })
 
 
