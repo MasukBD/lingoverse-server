@@ -51,16 +51,62 @@ async function run() {
         const registeredStudents = client.db('LingoVerseDB').collection('registeredStudents');
         const cartCollection = client.db('LingoVerseDB').collection('cartItem');
         const enrolledCollection = client.db('LingoVerseDB').collection('enrolledStudents');
+        const pendingCourseCollection = client.db('LingoVerseDB').collection('pendingCourse');
 
         // Sending Token to Client 
         app.post('/jwt', (req, res) => {
             const user = req.body;
             const token = jwt.sign(user, process.env.ACCESS_TOKEN, { expiresIn: "3d" })
             res.send({ token });
+        });
+
+        // Admin MiddleWare 
+        const adminVerify = async (req, res, next) => {
+            const email = req.decoded?.email;
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            if (user.role !== 'admin') {
+                return res.status(403).send({ error: true, message: 'forbidden access' });
+            }
+            next();
+        }
+
+        // Mentor MiddleWare 
+        const mentorVerify = async (req, res, next) => {
+            const email = req.decoded?.email;
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            if (user.role !== 'mentor') {
+                return res.status(403).send({ error: true, message: 'forbidden access' });
+            }
+            next();
+        }
+
+
+        // Checking user Role Api 
+        app.get('/users/:email', verifyJWToken, async (req, res) => {
+            const email = req.params?.email;
+            if (email !== req.decoded?.email) {
+                return res.status(401).send({ error: 'Unauthrized Access!' });
+            }
+            const query = { email: email };
+            const user = await userCollection.findOne(query);
+            const result = user.role;
+            res.send(result);
         })
 
 
-        // App User API here 
+        // App User API here
+        app.get('/users', verifyJWToken, adminVerify, async (req, res) => {
+            const searchQuery = req.query?.search;
+            let query = {}
+            if (searchQuery) {
+                query = { email: { $regex: searchQuery, $options: 'i' } }
+            }
+            const result = await userCollection.find(query).toArray();
+            res.send(result);
+        })
+
         app.post('/users', async (req, res) => {
             const user = req.body;
             const query = { email: user.email };
@@ -71,6 +117,26 @@ async function run() {
             const result = await userCollection.insertOne(user);
             res.send(result);
         });
+
+        app.patch('/users/:id', verifyJWToken, adminVerify, async (req, res) => {
+            const id = req.params?.id;
+            const filter = { _id: new ObjectId(id) };
+            const updatedInfo = req.body;
+            const updateToDb = {
+                $set: {
+                    role: updatedInfo.role
+                }
+            }
+            const result = await userCollection.updateOne(filter, updateToDb);
+            res.send(result);
+        });
+
+        app.delete('/users/:id', verifyJWToken, adminVerify, async (req, res) => {
+            const id = req.params?.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await userCollection.deleteOne(query);
+            res.send(result);
+        })
 
         // HomePage message API here 
         app.post('/messages', async (req, res) => {
@@ -86,6 +152,58 @@ async function run() {
             res.send(result);
         });
 
+        app.post('/courses/:id', verifyJWToken, adminVerify, async (req, res) => {
+            const id = req.params?.id;
+            const filter = { _id: new ObjectId(id) };
+            const pendingCourse = await pendingCourseCollection.findOne(filter);
+            if (pendingCourse) {
+                const addedToCourses = await coursesCollection.insertOne(pendingCourse);
+                const deleteFromPending = await pendingCourseCollection.deleteOne(filter);
+                return res.send({ addedToCourses, deleteFromPending });
+            }
+            res.status(404).send({ error: true, message: 'Not Found!' })
+        });
+
+        app.put('/courses/:id', verifyJWToken, adminVerify, async (req, res) => {
+            const id = req.params?.id;
+            const filter = { _id: new ObjectId(id) };
+            const options = { upsert: true };
+            const updatedData = req.body;
+            const updateToDB = {
+                $set: {
+                    course_name: updatedData.courseName,
+                    mentor_name: updatedData.mentorName,
+                    available_seats: updatedData.availableSeat,
+                    course_fee: updatedData.courseFee,
+                    image: updatedData.image,
+                    details: updatedData.details
+                }
+            }
+            const result = await coursesCollection.updateOne(filter, updateToDB, options);
+            res.send(result);
+        })
+
+        app.delete('/courses/:id', verifyJWToken, adminVerify, async (req, res) => {
+            const id = req.params?.id;
+            const filter = { _id: new ObjectId(id) };
+            const result = await coursesCollection.deleteOne(filter);
+            res.send(result);
+        })
+
+        // Pending Courses APi 
+        app.get('/pendingCourse', verifyJWToken, adminVerify, async (req, res) => {
+            const result = await pendingCourseCollection.find().toArray();
+            res.send(result);
+        });
+
+
+        app.delete('/pendingCourse/:id', verifyJWToken, adminVerify, async (req, res) => {
+            const id = req.params?.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await pendingCourseCollection.deleteOne(query);
+            res.send(result);
+        })
+
         // Mentors API Here 
         app.get('/mentors', async (req, res) => {
             const cursor = mentorsCollection.find();
@@ -99,6 +217,11 @@ async function run() {
             const result = await registeredStudents.insertOne(studentData);
             res.send(result);
         });
+
+        app.get('/allRegister', verifyJWToken, adminVerify, async (req, res) => {
+            const result = await registeredStudents.find().toArray();
+            res.send(result);
+        })
 
         app.get('/register', verifyJWToken, async (req, res) => {
             let query = {};
