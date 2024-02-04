@@ -191,10 +191,16 @@ async function run() {
         })
 
         // Pending Courses APi 
-        app.get('/pendingCourse', verifyJWToken, adminVerify, async (req, res) => {
+        app.get('/pendingCourse', verifyJWToken, async (req, res) => {
             const result = await pendingCourseCollection.find().toArray();
             res.send(result);
         });
+
+        app.post('/pendingCourse', verifyJWToken, mentorVerify, async (req, res) => {
+            const course = req.body;
+            const result = await pendingCourseCollection.insertOne(course);
+            res.send(result);
+        })
 
 
         app.delete('/pendingCourse/:id', verifyJWToken, adminVerify, async (req, res) => {
@@ -210,6 +216,27 @@ async function run() {
             const result = await cursor.toArray();
             res.send(result);
         });
+
+        app.put('/mentors', verifyJWToken, mentorVerify, async (req, res) => {
+            const email = req.query?.email;
+            const filter = { email: email };
+            const updatedData = req.body;
+            const options = { upsert: true };
+            const updateToDB = {
+                $set: {
+                    name: updatedData.name,
+                    email: updatedData.email,
+                    classes_taken: updatedData.courseTaken,
+                    classes: updatedData.courses,
+                    details: updatedData.details,
+                }
+            }
+            if (updatedData.image !== undefined && updatedData.image !== '') {
+                updateToDB.$set.image = updatedData.image;
+            }
+            const result = await mentorsCollection.updateOne(filter, updateToDB, options)
+            res.send(result);
+        })
 
         // Student Registration API Here 
         app.post('/register', verifyJWToken, async (req, res) => {
