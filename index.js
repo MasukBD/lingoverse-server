@@ -3,6 +3,7 @@ const app = express();
 const cors = require('cors');
 require('dotenv').config();
 const jwt = require('jsonwebtoken');
+const nodemailer = require("nodemailer");
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const port = process.env.PORT || 5000;
 
@@ -23,7 +24,11 @@ const verifyJWToken = (req, res, next) => {
         req.decoded = decoded;
         next();
     })
-}
+};
+
+
+// Using NodeMailer to Send message Via Email 
+
 
 
 
